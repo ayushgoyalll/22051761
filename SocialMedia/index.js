@@ -20,3 +20,52 @@ const getData = async (url) => {
     }
 };
 
+app.get('/users', async (req, res) => {
+    const users = await getData('users');
+    if (!users || !users.users) return res.status(500).json({ error: 'Failed to fetch users' });
+
+    const userPostCounts = {};
+    for (const id of Object.keys(users.users)) {
+        const posts = await getData(`users/${id}/posts`);
+        if (posts && posts.posts) userPostCounts[id] = posts.posts.length;
+    }
+
+    const topUsers = Object.entries(userPostCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([id]) => ({ id, name: users.users[id], posts: userPostCounts[id] }));
+
+    res.json({ topUsers });
+});
+
+app.get('/posts', async (req, res) => {
+    const { type } = req.query;
+    const users = await getData('users');
+    if (!users || !users.users) return res.status(500).json({ error: 'Failed to fetch users' });
+
+    let postsList = [];
+    for (const id of Object.keys(users.users)) {
+        const posts = await getData(`users/${id}/posts`);
+        if (posts && posts.posts) postsList = postsList.concat(posts.posts);
+    }
+
+    if (!postsList.length) return res.status(500).json({ error: 'No posts found' });
+
+    if (type === 'popular') {
+        let commentCounts = {};
+        for (const post of postsList) {
+            const comments = await getData(`posts/${post.id}/comments`);
+            if (comments && comments.comments) commentCounts[post.id] = comments.comments.length;
+        }
+
+        const maxComments = Math.max(...Object.values(commentCounts), 0);
+        const popularPosts = postsList.filter(post => commentCounts[post.id] === maxComments);
+        return res.json({ popularPosts });
+    }
+
+    if (type === 'latest') return res.json({ latestPosts: postsList.slice(-5) });
+    
+    res.status(400).json({ error: 'Invalid type parameter' });
+});
+
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
